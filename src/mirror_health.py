@@ -27,7 +27,7 @@ class GitMirrorHealth(BaseModel):
     ip_address: Annotated[IPAddress, Field(frozen=True, description="IP address of the mirror server")]
     role: Annotated[MirrorRole, Field(frozen=True, description="Mirror's role: primary/secondary/tertiary")]
 
-    # Availability (0/1, Prometheus-style gauges) ---
+    # Availability (0/1, Prometheus-style gauges)
     up: Annotated[
         int, Field(ge=0, le=1, description="Whether the mirror host/service is reachable")
     ] = 0
@@ -77,7 +77,7 @@ class GitMirrorHealth(BaseModel):
 
     def to_prometheus_samples(self) -> str:
         """Render this instance's metrics as Prometheus exposition-format
-        sample lines (no HELP/TYPE headers -- use `render_prometheus()`
+        sample lines (for no HELP/TYPE headers, use render_prometheus()
         for a full multi-instance document with headers)."""
         labels = self._base_labels()
         lines = [
@@ -148,10 +148,8 @@ def render_prometheus(metrics: Iterable[GitMirrorHealth]) -> str:
 
 
 def push_to_victoria_metrics(metrics: Iterable[GitMirrorHealth], url: str, timeout: float = 5.0) -> None:
-    """Push metrics directly to VictoriaMetrics via its Prometheus
-    exposition-format import endpoint, e.g.:
+    """Push metrics directly to VictoriaMetrics via its Prometheus exposition-format import endpoint, e.g.:
         push_to_victoriametrics(metrics, "http://vm:8428/api/v1/import/prometheus")
-    Requires the `requests` package.
     """
 
     payload = render_prometheus(metrics)
