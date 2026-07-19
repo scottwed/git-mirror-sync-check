@@ -43,7 +43,7 @@ for repo_dir in */; do
         git for-each-ref --sort=-committerdate \
             --format='%(refname)' \
             --count="$RECENT_COUNT" \
-            refs/heads/ refs/tags/ 2>/dev/null
+            refs/heads/ refs/tags/ objectsize 2>/dev/null
     )
 
     if [ ${#recent_refs[@]} -eq 0 ]; then
