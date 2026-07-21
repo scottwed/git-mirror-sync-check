@@ -62,7 +62,6 @@ def main():
     while True:
         # if True:
         for repo_path in repo_paths:
-            # TODO Fix invalid assumption that user provided IP addresses are IPv4 (*2)
             if repo_path not in repos_for_project:
                 primary_health = GitMirrorHealth(
                     project=repo_path, instance=primary_repo, ip_address=ip_address(primary_repo_addr),
