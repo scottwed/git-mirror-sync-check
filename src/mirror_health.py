@@ -23,7 +23,7 @@ class GitMirrorHealth(BaseModel):
 
     # Identity
     project: Annotated[str, Field(frozen=True, description="Repo/project identifier, e.g. 'org/repo'")]
-    mirror_host: Annotated[str, Field(frozen=True, description="Hostname or ID of the mirror server")]
+    instance: Annotated[str, Field(frozen=True, description="Hostname or ID of the mirror server")]
     ip_address: Annotated[IPAddress, Field(frozen=True, description="IP address of the mirror server")]
     role: Annotated[MirrorRole, Field(frozen=True, description="Mirror's role: primary/secondary/tertiary")]
 
@@ -31,13 +31,16 @@ class GitMirrorHealth(BaseModel):
     up: Annotated[
         int, Field(ge=0, le=1, description="Whether the mirror host/service is reachable")
     ] = 0
+    git_port_open: Annotated[
+        int, Field(ge=0, le=1, description="Whether the git port TCP 9418 is responsive")
+    ] = 0
     in_service: Annotated[
         int, Field(ge=0, le=1, description="Whether the mirror is actively serving traffic")
     ] = 1
 
     # Sync health
     in_sync: Annotated[
-        int, Field(ge=0, le=1, description="Whether the mirror is currently in sync with source")
+        int, Field(ge=0, le=1, description="Whether the mirror is currently in sync with the source")
     ] = 0
     last_in_sync: Annotated[
         Optional[datetime],
@@ -70,8 +73,8 @@ class GitMirrorHealth(BaseModel):
     def _base_labels(self) -> dict:
         return {
             "project": self.project,
-            "mirror_host": self.mirror_host,
-            "role": self.role,
+            "instance": self.instance,
+            "job": self.role,
             "ip_address": str(self.ip_address),
         }
 
@@ -82,6 +85,7 @@ class GitMirrorHealth(BaseModel):
         labels = self._base_labels()
         lines = [
             _sample(f"{METRIC_PREFIX}_up", labels, self.up),
+            _sample(f"{METRIC_PREFIX}_git_port_open", labels, self.git_port_open),
             _sample(f"{METRIC_PREFIX}_in_service", labels, self.in_service),
             _sample(f"{METRIC_PREFIX}_in_sync", labels, self.in_sync),
             _sample(f"{METRIC_PREFIX}_sync_errors_total", labels, self.sync_errors_total),
@@ -117,8 +121,9 @@ def _sample(metric: str, labels: dict, value) -> str:
 # HELP/TYPE metadata, emitted once per metric name regardless of how many
 # instances are rendered together.
 _METRIC_METADATA = [
-    (f"{METRIC_PREFIX}_up", "gauge", "Whether the mirror host/service is reachable (1=up, 0=down)"),
-    (f"{METRIC_PREFIX}_in_service", "gauge", "Whether the mirror is actively serving traffic (1=yes, 0=no)"),
+    (f"{METRIC_PREFIX}_up", "gauge", "Whether the git service responds without error (1=up, 0=down)"),
+    (f"{METRIC_PREFIX}_git_port_open", "gauge", "Whether the git port TCP 9418 is responsive (1=yes, 0=not)"),
+    (f"{METRIC_PREFIX}_in_service", "gauge", "Whether the mirror host is currently configured to serve traffic (1=yes, 0=no)"),
     (f"{METRIC_PREFIX}_in_sync", "gauge", "Whether the mirror is currently in sync with its source (1=yes, 0=no)"),
     (f"{METRIC_PREFIX}_sync_errors_total", "counter", "Cumulative count of sync errors"),
     (f"{METRIC_PREFIX}_last_sync_timestamp_seconds", "gauge", "Unix timestamp of the last confirmed in-sync state"),
@@ -148,10 +153,11 @@ def render_prometheus(metrics: Iterable[GitMirrorHealth]) -> str:
 
 
 def push_to_victoria_metrics(metrics: Iterable[GitMirrorHealth], url: str, timeout: float = 5.0) -> None:
-    """Push metrics directly to VictoriaMetrics via its Prometheus exposition-format import endpoint, e.g.:
+    """Push metrics directly to F via its Prometheus exposition-format import endpoint, e.g.:
         push_to_victoriametrics(metrics, "http://vm:8428/api/v1/import/prometheus")
     """
-
+    print("Pushing metrics to Victoria")
     payload = render_prometheus(metrics)
     resp = requests.post(url, data=payload.encode("utf-8"), timeout=timeout)
+    print(resp.status_code, resp.text)
     resp.raise_for_status()
