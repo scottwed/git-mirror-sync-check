@@ -30,7 +30,7 @@ tier_3_mirrors: list[str] = ['15.204.9.231', '15.204.88.113', '51.255.194.124', 
                              # '2001:470:415d:1000:5054:ff:fe8d:c1a3', '2001:41d0:305:2100::1:64b',
                              # '2604:2dc0:101:200::1c35', '2604:2dc0:202:300::5d3', '2604:2dc0:202:300::a52',
                              # '2a01:4f8:1c19:4eae::1', '2a0e:97c0:3ea:528::1', '2a0e:97c0:3ea:52a::1',
-                             # '2a0e:97c0:3ea:82b::1'
+                             # '2a0e:97c0:3ea:82b::1',
                              ]
 
 # tier_3_mirrors: list[str] = ['92.118.206.28', '5.5.5.5', '15.204.88.113']
@@ -41,7 +41,6 @@ repo_paths: list[str] = [
     # 'chess',
     # 'coreutils',
 ]
-
 
 # Git remote ports - 22 SSH, 80 HTTP, 443 HTTPS, 9418 GIT R/O anon
 
@@ -95,7 +94,7 @@ def main():
                 logger.info("[{repo}] Will retry in {delay}", repo=repo_path, delay=retry_delay_secs)
                 sleep(retry_delay_secs)
                 continue
-            logger.info('[{repo}] Refs: \n{refs}', repo=repo_path, refs=primary_refs[0])
+            logger.info('[{repo}] Refs: \n{refs}', repo=repo_path, refs=primary_refs[1])
             primary_health.index_snapshot = primary_refs[1].strip()
             primary_health.up = 1
             primary_health.last_in_sync = datetime.now()
@@ -106,7 +105,7 @@ def main():
                 logger.info('[{repo}] Retrieving references for mirror: {mirror} ({ip})', repo=repo_path,
                             mirror=mirror.instance, ip=mirror.ip_address)
                 mirror_refs = get_ref_list(calc_repo_url(str(mirror.ip_address), repo_path))
-                logger.info('[{repo}] Refs: \n{refs}', repo=repo_path, refs=mirror_refs[0])
+                logger.info('[{repo}] Refs: \n{refs}', repo=repo_path, refs=mirror_refs[1])
                 if mirror_refs[2]:
                     logger.error('[{repo}] Failure to retrieve references from mirror. Git error: {err}',
                                  repo=repo_path, err=mirror_refs[2])
@@ -137,8 +136,7 @@ def main():
                 sleep(retry_delay_secs)
 
 def get_ref_list(repo_url: str) -> tuple[int, str, str]:
-    # cmd = [r'C:\Program Files\Git\cmd\git.exe', 'ls-remote', '--sort=-committerdate', repo_url, '|', 'tail', '-1000']
-    # FIXME path to git shouldn't be hard coded here
+    # Returns a tuple of (git exit code, ls-remote output, git error messages)
     cmd = [GIT_PATH, 'ls-remote', repo_url]
     logger.info('Running {cmd}', cmd=' '.join(cmd))
     result = run(cmd, shell=True, capture_output=True)
