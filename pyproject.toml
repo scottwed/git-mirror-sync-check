@@ -3,6 +3,7 @@ name = "git-mirror-sync-check"
 version = "0.1.0"
 requires-python = ">=3.14"
 dependencies = [
+    "loguru>=0.7.3",
     "pydantic>=2.13.4",
     "requests>=2.34.2",
 ]
