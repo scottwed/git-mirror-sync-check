@@ -13,18 +13,25 @@ primary_repo:str = 'gw8.bru.st'
 primary_repo_addr:str = gethostbyname(primary_repo)
 repo_rr_record = 'git.git.savannah.gnu.org'
 
-tier_3_mirrors: list[str] = ['92.118.206.28', '5.5.5.5', '15.204.88.113']
+# tier_3_mirrors: list[str] = ['92.118.206.28', '5.5.5.5', '15.204.88.113']
+tier_3_mirrors: list[str] =['176.100.37.193', '185.112.147.164', '135.148.138.35', '15.204.9.231',
+                            '15.204.88.113', '51.255.194.124', '92.118.206.28', '176.100.37.192',
+                            '178.104.15.118']
 # tier_3_mirrors: list[str] = ['92.118.206.28', '15.204.88.113']
 repo_paths: list[str] = [
     'test-project.git',
-    'chess',
-    'coreutils',]
-retry_delay = 30 # Seconds
+    # 'chess',
+    # 'coreutils',
+]
+# retry_delay = 30 # Seconds
+# retry_delay = 30 # Seconds
+
 
 # Git remote ports - 22 SSH, 80 HTTP, 443 HTTPS, 9418 GIT R/O anon
 
 # TODO implement a snapshot history (last 5-10 snapshot hashes) to estimate the staleness of the mirror.
-# TODO consider adding a last contact timestamp to the mirror health class
+# TODO write alert logic.  Alert on up=0 for > x minutes, git_port_open=0 > x minutes, in_service=0 > 26 hours
+# TODO Isolate port_open check from project-level checking.
 
 def main():
     if not (primary_repo and tier_3_mirrors and repo_paths):
@@ -63,7 +70,7 @@ def main():
             primary_health.git_port_open = 1 if is_port_open(str(primary_health.ip_address), 9418) else 0
             primary_refs = get_ref_list(calc_repo_url(primary_repo, repo_path))
             print()
-            print(primary_refs[0])
+            # print(primary_refs[0])
             if primary_refs[2]:
                 print(f'[{repo_path}] Failure to retrieve references from primary. Git error: {primary_refs[2]}')
                 primary_health.last_error_message = primary_refs[2]
