@@ -20,7 +20,7 @@ GIT_PATH = os.environ.get("CGR_GIT_PATH", r'C:\Program Files\Git\cmd\git.exe')
 VICTORIA_PROM_IMPORT_URL = os.environ.get("CGR_VIC_PROM_INPUT_URL",
                                           r'http://127.0.0.1:8428/api/v1/import/prometheus')
 
-primary_repo: str = 'gw8.bru.st'
+primary_repo: str = 'git.savannah.gnu.org'
 primary_repo_addr: str = gethostbyname(primary_repo)
 repo_rr_record: str = 'git.git.savannah.gnu.org'
 
@@ -36,11 +36,6 @@ tier_3_mirrors: list[str] = ['15.204.9.231', '15.204.88.113', '51.255.194.124', 
 # tier_3_mirrors: list[str] = ['92.118.206.28', '5.5.5.5', '15.204.88.113']
 # tier_3_mirrors: list[str] = ['92.118.206.28', '15.204.88.113']
 
-repo_paths: list[str] = [
-    'test-project.git',
-    # 'chess',
-    # 'coreutils',
-]
 
 # Git remote ports - 22 SSH, 80 HTTP, 443 HTTPS, 9418 GIT R/O anon
 
@@ -48,7 +43,7 @@ repo_paths: list[str] = [
 # TODO write alert logic.  Alert on up=0 for > x minutes, git_port_open=0 > x minutes, in_service=0 > 26 hours
 # TODO Isolate port_open check from project-level checking.
 
-def main():
+def main(repo_paths:list[str]):
     if not (primary_repo and tier_3_mirrors and repo_paths):
         logger.error("Missing one or more required inputs!")
         exit(1)
@@ -123,17 +118,13 @@ def main():
                 if mirror.index_snapshot == primary_health.index_snapshot:
                     mirror.in_sync = 1
                     mirror.last_in_sync = primary_health.last_in_sync
+                else:
+                    mirror.in_sync = 0
+                    logger.error("[{repo}] OUT OF SYNC! on {mirror}", repo=repo_paths, mirror=mirror.instance)
 
-            for r, m in repos_for_project.items():
-                logger.info("")
-                # for mh in m:
-                #     print()
-                #     pprint(mh)
-                #     print()
-                # print(render_prometheus([mh]))
-                print(render_prometheus(m))
-                push_to_victoria_metrics(m, VICTORIA_PROM_IMPORT_URL)
-                sleep(retry_delay_secs)
+            print(render_prometheus(repos_for_project[repo_path]))
+            push_to_victoria_metrics(repos_for_project[repo_path], VICTORIA_PROM_IMPORT_URL)
+        sleep(retry_delay_secs)
 
 def get_ref_list(repo_url: str) -> tuple[int, str, str]:
     # Returns a tuple of (git exit code, ls-remote output, git error messages)
@@ -146,4 +137,7 @@ def get_ref_list(repo_url: str) -> tuple[int, str, str]:
 
 
 if __name__ == '__main__':
-    main()
+    with open('active_repos.txt', 'r', encoding='utf-8') as f:
+        repo_paths = [l.strip() for l in f.readlines() if l.strip()]
+    print(repo_paths)
+    main(repo_paths)
