@@ -36,7 +36,6 @@ tier_3_mirrors: list[str] = ['15.204.9.231', '15.204.88.113', '51.255.194.124', 
 # tier_3_mirrors: list[str] = ['92.118.206.28', '5.5.5.5', '15.204.88.113']
 # tier_3_mirrors: list[str] = ['92.118.206.28', '15.204.88.113']
 
-
 # Git remote ports - 22 SSH, 80 HTTP, 443 HTTPS, 9418 GIT R/O anon
 
 # TODO implement a snapshot history (last 5-10 snapshot hashes) to estimate the staleness of the mirror.
@@ -125,6 +124,7 @@ def main(repo_paths:list[str]):
             print(render_prometheus(repos_for_project[repo_path]))
             push_to_victoria_metrics(repos_for_project[repo_path], VICTORIA_PROM_IMPORT_URL)
         sleep(retry_delay_secs)
+
 
 def get_ref_list(repo_url: str) -> tuple[int, str, str]:
     # Returns a tuple of (git exit code, ls-remote output, git error messages)

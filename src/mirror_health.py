@@ -126,7 +126,7 @@ _METRIC_METADATA = [
     (f"{METRIC_PREFIX}_in_service", "gauge", "Whether the mirror host is currently configured to serve traffic (1=yes, 0=no)"),
     (f"{METRIC_PREFIX}_in_sync", "gauge", "Whether the mirror is currently in sync with its source (1=yes, 0=no)"),
     (f"{METRIC_PREFIX}_sync_errors_total", "counter", "Cumulative count of sync errors"),
-    (f"{METRIC_PREFIX}_last_sync_timestamp_seconds", "gauge", "Unix timestamp of the last confirmed in-sync state"),
+    (f"{METRIC_PREFIX}_last_sync_timestamp_seconds", "counter", "Unix timestamp of the last confirmed in-sync state"),
     (f"{METRIC_PREFIX}_last_error_info", "gauge", "Info metric carrying the last sync error message as a label"),
 ]
 
