@@ -119,7 +119,7 @@ def main(repo_paths:list[str]):
                     mirror.last_in_sync = primary_health.last_in_sync
                 else:
                     mirror.in_sync = 0
-                    logger.error("[{repo}] OUT OF SYNC! on {mirror}", repo=repo_paths, mirror=mirror.instance)
+                    logger.error("[{repo}] OUT OF SYNC! on {mirror}", repo=repo_path, mirror=mirror.instance)
 
             print(render_prometheus(repos_for_project[repo_path]))
             push_to_victoria_metrics(repos_for_project[repo_path], VICTORIA_PROM_IMPORT_URL)
@@ -137,7 +137,7 @@ def get_ref_list(repo_url: str) -> tuple[int, str, str]:
 
 
 if __name__ == '__main__':
-    with open('active_repos.txt', 'r', encoding='utf-8') as f:
+    with open('one_repo.txt', 'r', encoding='utf-8') as f:
         repo_paths = [l.strip() for l in f.readlines() if l.strip()]
     print(repo_paths)
     main(repo_paths)
