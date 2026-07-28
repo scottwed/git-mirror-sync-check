@@ -18,6 +18,7 @@ class MirrorRole(str, Enum):
     tertiary = "tertiary"
 
 
+# noinspection PyStringConversionWithoutDunderMethod
 class GitMirrorHealth(BaseModel):
     """Availability and sync-health metrics for a single mirrored repo on a single mirror server."""
 
