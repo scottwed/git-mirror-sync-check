@@ -1,7 +1,7 @@
 import os
 from datetime import datetime, timedelta
 from ipaddress import ip_address
-from socket import gethostbyname, getaddrinfo, AF_INET, AF_INET6
+from socket import getaddrinfo, AF_INET, AF_INET6
 from subprocess import run
 from sys import stderr
 from time import sleep
@@ -9,7 +9,7 @@ from typing import Any
 
 from loguru import logger
 
-from mirror_health import GitMirrorHealth, MirrorRole
+from mirror_health import GitMirrorHealth, prepare_mirror_health_objects
 from notifier_email import EmailSender
 from util import is_port_open, calc_repo_url, calc_ss_diff
 
@@ -42,9 +42,7 @@ active_scan_interval_secs = 60 * 5  # 5 minutes default
 inactive_scan_interval_secs = 60 * 60 * 12  # 12 hour default
 
 
-# TODO implement a snapshot history (last 5-10 snapshot hashes) to estimate the staleness of the mirror.
 # TODO write alert logic.  Alert on up=0 for > x minutes, git_port_open=0 > x minutes, in_service=0 > 26 hours
-# TODO Isolate port_open check from project-level checking.
 
 def main(repo_paths: list[str], primary_fqdn: str, mirrors_rr_fqdn: str,
          mirror_hosts: list[str], notifier: EmailSender):
@@ -56,7 +54,8 @@ def main(repo_paths: list[str], primary_fqdn: str, mirrors_rr_fqdn: str,
         for repo_path in repo_paths:
             prepare_mirror_health_objects(repo_path, repos_for_project, primary_fqdn, mirror_hosts)
             scan_repos_for_project(repo_path, repos_for_project[repo_path], current_in_service)
-        sleep(30) # TODO Implement per-repo scan delay logic
+        sleep(30)  # TODO Implement per-repo scan delay logic
+
 
 def get_in_service_from_dns(mirrors_rr_fqdn: str) -> list[Any]:
     current_in_service = [a[4][0] for a in getaddrinfo(mirrors_rr_fqdn, 22, family=AF_INET)]
@@ -83,7 +82,7 @@ def scan_repos_for_project(repo_path: str, ghm_list: list[GitMirrorHealth], curr
 
 def poll_git_host(repo_path: str, ghm: GitMirrorHealth, primary_ghm: GitMirrorHealth):
     header = f'{repo_path} - {ghm.role} - {ghm.ip_address}'
-    ghm.git_port_open = 1 if is_port_open(str(ghm.ip_address), 9418) else 0
+    ghm.git_port_open = 1
     logger.debug('[{header}] Retrieving references', header=header)
     mirror_refs = get_ref_list(calc_repo_url(str(ghm.ip_address), repo_path))
 
@@ -96,10 +95,9 @@ def poll_git_host(repo_path: str, ghm: GitMirrorHealth, primary_ghm: GitMirrorHe
                      header=header, err=mirror_refs[2])
         ghm.sync_errors_total += 1
         ghm.last_error_message = mirror_refs[2]
-        if "unable to connect" in mirror_refs[2]:
-            ghm.up = 0
-        # Exit code 128: Valid git CLI syntax was used, but the remote server didn't respond.
-        # Exit code 128: If .git/packed-refs is intentionally corrupted.
+        ghm.up = 0
+        ghm.git_port_open = 1 if is_port_open(str(ghm.ip_address), 9418) else 0
+
     else:
         ghm.up = 1
         ghm.index_snapshot = mirror_refs[1].strip()
@@ -116,34 +114,10 @@ def poll_git_host(repo_path: str, ghm: GitMirrorHealth, primary_ghm: GitMirrorHe
             logger.error(f"[{header}] OUT OF SYNC!\n{discrepancy}", header=header, discrepancy=discrepancy)
 
 
-def prepare_mirror_health_objects(
-        repo_path: str, repos_for_project: dict[str, list[GitMirrorHealth]],
-        primary_repo_fqdn: str, mirror_hosts: list[str]):
-    # On-demand initialization of the mirror health instances.
-    # First item in the list will be the primary, followed by all the mirrors.
-    if repo_path not in repos_for_project:
-        primary_repo_addr: str = gethostbyname(primary_repo_fqdn)
-        primary_health = GitMirrorHealth(
-            project=repo_path, instance=my_primary_repo_fqdn, ip_address=ip_address(primary_repo_addr),
-            role=MirrorRole.primary, up=0, in_service=1, in_sync=1,
-            last_in_sync=datetime.now(), sync_errors_total=0, last_error_message="",
-            index_snapshot=""
-        )
-        repos_for_project[repo_path] = [primary_health]
-        # Create placeholders for all the mirrors
-        for mirror in mirror_hosts:
-            mh = GitMirrorHealth(
-                project=repo_path, instance=mirror, ip_address=ip_address(mirror),
-                role=MirrorRole.tertiary, up=0, in_service=1, in_sync=0,
-                last_in_sync=datetime.min, sync_errors_total=0, last_error_message="",
-                index_snapshot="")
-            repos_for_project[repo_path].append(mh)
-
-
 def get_ref_list(repo_url: str) -> tuple[int, str, str]:
     # Returns a tuple of (git exit code, ls-remote output, git error messages)
     cmd = [GIT_PATH, 'ls-remote', repo_url]
-    logger.info('Running {cmd}', cmd=' '.join(cmd))
+    # logger.info('Running {cmd}', cmd=' '.join(cmd))
     result = run(cmd, shell=True, capture_output=True)
     return result.returncode, result.stdout.decode('utf-8').strip(), result.stderr.decode('utf-8').strip()
 

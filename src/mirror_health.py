@@ -1,11 +1,10 @@
 from datetime import datetime, timezone
 from enum import Enum
-from ipaddress import IPv4Address, IPv6Address
-from typing import Annotated, Iterable, Optional, Union
+from ipaddress import IPv4Address, IPv6Address, ip_address
+from typing import Annotated, Optional, Union
 
+from _socket import gethostbyname
 from pydantic import BaseModel, Field, field_validator
-import requests
-
 
 IPAddress = Union[IPv4Address, IPv6Address]
 
@@ -20,7 +19,7 @@ class MirrorRole(str, Enum):
 
 # noinspection PyStringConversionWithoutDunderMethod
 class GitMirrorHealth(BaseModel):
-    """Availability and sync-health metrics for a single mirrored repo on a single mirror server."""
+    """Availability and sync-health metrics for a repo project on one git server."""
 
     # Identity
     project: Annotated[str, Field(frozen=True, description="Repo/project identifier, e.g. 'org/repo'")]
@@ -51,7 +50,7 @@ class GitMirrorHealth(BaseModel):
         int, Field(ge=0, description="Cumulative count of sync errors")
     ] = 0
     last_error_message: Annotated[
-         str, Field(description="Most recent sync error message, if any")
+        str, Field(description="Most recent sync error message, if any")
     ] = ""
 
     # Metadata
@@ -69,96 +68,26 @@ class GitMirrorHealth(BaseModel):
             v = v.replace(tzinfo=timezone.utc)
         return v
 
-    # Prometheus export
 
-    def _base_labels(self) -> dict:
-        return {
-            "project": self.project,
-            "instance": self.instance,
-            "job": self.role,
-            "ip_address": str(self.ip_address),
-        }
+def prepare_mirror_health_objects(
+        repo_path: str, repos_for_project: dict[str, list[GitMirrorHealth]],
+        primary_repo_fqdn: str, mirror_hosts: list[str]):
+    # On-demand initialization of the mirror health instances.
+    # First item in the list will be the primary, followed by all the mirrors.
+    if repo_path not in repos_for_project:
+        primary_repo_addr: str = gethostbyname(primary_repo_fqdn)
+        primary_health = GitMirrorHealth(
+            project=repo_path, instance=primary_repo_fqdn, ip_address=ip_address(primary_repo_addr),
+            role=MirrorRole.primary, up=0, in_service=1, in_sync=1,
+            last_in_sync=datetime.now(), sync_errors_total=0, last_error_message="",
+            index_snapshot="")
+        repos_for_project[repo_path] = [primary_health]
 
-    def to_prometheus_samples(self) -> str:
-        """Render this instance's metrics as Prometheus exposition-format
-        sample lines (for no HELP/TYPE headers, use render_prometheus()
-        for a full multi-instance document with headers)."""
-        labels = self._base_labels()
-        lines = [
-            _sample(f"{METRIC_PREFIX}_up", labels, self.up),
-            _sample(f"{METRIC_PREFIX}_git_port_open", labels, self.git_port_open),
-            _sample(f"{METRIC_PREFIX}_in_service", labels, self.in_service),
-            _sample(f"{METRIC_PREFIX}_in_sync", labels, self.in_sync),
-            _sample(f"{METRIC_PREFIX}_sync_errors_total", labels, self.sync_errors_total),
-        ]
-        if self.last_in_sync is not None:
-            lines.append(
-                _sample(
-                    f"{METRIC_PREFIX}_last_sync_timestamp_seconds",
-                    labels,
-                    int(self.last_in_sync.timestamp()),
-                )
-            )
-        if self.last_error_message:
-            error_labels = {**labels, "error": self.last_error_message}
-            lines.append(_sample(f"{METRIC_PREFIX}_last_error_info", error_labels, 1))
-        return "\n".join(lines)
-
-
-def _escape_label_value(value: str) -> str:
-    # Prometheus label-value escaping: backslash, double-quote, newline.
-    return (
-        value.replace("\\", "\\\\")
-        .replace('"', '\\"')
-        .replace("\n", "\\n")
-    )
-
-
-def _sample(metric: str, labels: dict, value) -> str:
-    label_str = ",".join(f'{k}="{_escape_label_value(str(v))}"' for k, v in labels.items())
-    return f"{metric}{{{label_str}}} {value}"
-
-
-# HELP/TYPE metadata, emitted once per metric name regardless of how many
-# instances are rendered together.
-_METRIC_METADATA = [
-    (f"{METRIC_PREFIX}_up", "gauge", "Whether the git service responds without error (1=up, 0=down)"),
-    (f"{METRIC_PREFIX}_git_port_open", "gauge", "Whether the git port TCP 9418 is responsive (1=yes, 0=not)"),
-    (f"{METRIC_PREFIX}_in_service", "gauge", "Whether the mirror host is currently configured to serve traffic (1=yes, 0=no)"),
-    (f"{METRIC_PREFIX}_in_sync", "gauge", "Whether the mirror is currently in sync with its source (1=yes, 0=no)"),
-    (f"{METRIC_PREFIX}_sync_errors_total", "counter", "Cumulative count of sync errors"),
-    (f"{METRIC_PREFIX}_last_sync_timestamp_seconds", "counter", "Unix timestamp of the last confirmed in-sync state"),
-    (f"{METRIC_PREFIX}_last_error_info", "gauge", "Info metric carrying the last sync error message as a label"),
-]
-
-
-def render_prometheus(metrics: Iterable[GitMirrorHealth]) -> str:
-    """Render a full Prometheus exposition-format document for multiple
-    GitMirrorHealth instances, with HELP/TYPE headers emitted once per
-    metric name. This is the payload you'd write to a textfile-collector
-    path, or POST as the body to VictoriaMetrics'
-    /api/v1/import/prometheus endpoint."""
-    metrics = list(metrics)
-    blocks = []
-    for name, mtype, help_text in _METRIC_METADATA:
-        samples = []
-        for m in metrics:
-            for line in m.to_prometheus_samples().splitlines():
-                if line.startswith(name + "{"):
-                    samples.append(line)
-        if not samples:
-            continue
-        block = [f"# HELP {name} {help_text}", f"# TYPE {name} {mtype}", *samples]
-        blocks.append("\n".join(block))
-    return "\n".join(blocks) + "\n"
-
-
-def push_to_victoria_metrics(metrics: Iterable[GitMirrorHealth], url: str, timeout: float = 5.0) -> None:
-    """Push metrics directly to F via its Prometheus exposition-format import endpoint, e.g.:
-        push_to_victoriametrics(metrics, "http://vm:8428/api/v1/import/prometheus")
-    """
-    print("Pushing metrics to Victoria")
-    payload = render_prometheus(metrics)
-    resp = requests.post(url, data=payload.encode("utf-8"), timeout=timeout)
-    print(resp.status_code, resp.text)
-    resp.raise_for_status()
+        # Create placeholders for all the mirrors
+        for mirror in mirror_hosts:
+            mh = GitMirrorHealth(
+                project=repo_path, instance=mirror, ip_address=ip_address(mirror),
+                role=MirrorRole.tertiary, up=0, in_service=1, in_sync=0,
+                last_in_sync=datetime.min, sync_errors_total=0, last_error_message="",
+                index_snapshot="")
+            repos_for_project[repo_path].append(mh)
