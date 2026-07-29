@@ -10,6 +10,7 @@ from typing import Any
 from loguru import logger
 
 from mirror_health import GitMirrorHealth, MirrorRole
+from notifier_email import EmailSender
 from util import is_port_open, calc_repo_url, calc_ss_diff
 
 
@@ -45,7 +46,8 @@ inactive_scan_interval_secs = 60 * 60 * 12  # 12 hour default
 # TODO write alert logic.  Alert on up=0 for > x minutes, git_port_open=0 > x minutes, in_service=0 > 26 hours
 # TODO Isolate port_open check from project-level checking.
 
-def main(repo_paths: list[str], primary_fqdn: str, mirrors_rr_fqdn: str, mirror_hosts: list[str]):
+def main(repo_paths: list[str], primary_fqdn: str, mirrors_rr_fqdn: str,
+         mirror_hosts: list[str], notifier: EmailSender):
     repos_for_project: dict[str, list[GitMirrorHealth]] = dict()
     while True:
         # The script assumes that the primary and all mirrors should have copy of each git repo.
@@ -87,7 +89,7 @@ def poll_git_host(repo_path: str, ghm: GitMirrorHealth, primary_ghm: GitMirrorHe
 
     logger.info('[{header}] Retrieved {ref_count} references.',
                 header=header, ref_count=len(mirror_refs[1].split('\n')))
-    logger.debug('[{header}] Refs: \n{refs}', header=header, refs=mirror_refs[1])
+    # logger.debug('[{header}] Refs: \n{refs}', header=header, refs=mirror_refs[1])
 
     if mirror_refs[2]:
         logger.error('[{header}] Failure to retrieve references. Git error: {err}',
@@ -160,4 +162,13 @@ if __name__ == '__main__':
     my_mirrors_rr_fqdn = 'git.git.savannah.gnu.org'
     my_primary_repo_fqdn = 'git.savannah.gnu.org'
 
-    main(my_repo_paths, my_primary_repo_fqdn, my_mirrors_rr_fqdn, my_mirror_hosts)
+    # Send a test email at startup
+    mailer = EmailSender("email_config.yaml")
+    mailer.send(
+        subject="Git health check startup",
+        body="The git health check script has been started",
+    )
+
+    main(repo_paths=my_repo_paths, primary_fqdn=my_primary_repo_fqdn,
+         mirrors_rr_fqdn=my_mirrors_rr_fqdn, mirror_hosts=my_mirror_hosts,
+         notifier=mailer)

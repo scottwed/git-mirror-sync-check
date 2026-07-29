@@ -1,5 +1,6 @@
-import socket
 import difflib
+import socket
+
 
 def is_port_open(ip: str, port: int) -> int:
     # Returns 0 on success, or an errno on failure
@@ -19,9 +20,11 @@ def is_port_open(ip: str, port: int) -> int:
     finally:
         s.close()
 
+
 def calc_repo_url(host: str, path: str, protocol='git', ) -> str:
     # Example git://git.git.savannah.gnu.org/test-project.git
     return f'{protocol}://{host}/{path}'
+
 
 def calc_ss_diff(primary_snapshot: str, mirror_snapshot: str) -> str:
     lines1 = primary_snapshot.splitlines(keepends=True)
