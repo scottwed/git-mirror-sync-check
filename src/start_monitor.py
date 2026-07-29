@@ -9,6 +9,7 @@ from typing import Any
 
 from loguru import logger
 
+from alerts import process_alert_rules
 from mirror_health import GitMirrorHealth, prepare_mirror_health_objects
 from notifier_email import EmailSender
 from util import is_port_open, calc_repo_url, calc_ss_diff
@@ -54,6 +55,7 @@ def main(repo_paths: list[str], primary_fqdn: str, mirrors_rr_fqdn: str,
         for repo_path in repo_paths:
             prepare_mirror_health_objects(repo_path, repos_for_project, primary_fqdn, mirror_hosts)
             scan_repos_for_project(repo_path, repos_for_project[repo_path], current_in_service)
+            process_alert_rules(repos_for_project[repo_path], notifier)
         sleep(30)  # TODO Implement per-repo scan delay logic
 
 
@@ -100,6 +102,7 @@ def poll_git_host(repo_path: str, ghm: GitMirrorHealth, primary_ghm: GitMirrorHe
 
     else:
         ghm.up = 1
+        ghm.sync_errors_total = 0
         ghm.index_snapshot = mirror_refs[1].strip()
 
     if ghm is primary_ghm:
@@ -124,7 +127,8 @@ def get_ref_list(repo_url: str) -> tuple[int, str, str]:
 
 if __name__ == '__main__':
     my_repo_paths: list[str] = []
-    with open('one_repo.txt', 'r', encoding='utf-8') as f:
+    # with open('one_repo.txt', 'r', encoding='utf-8') as f:
+    with open('active_repos.txt', 'r', encoding='utf-8') as f:
         my_repo_paths.extend([l.strip() for l in f.readlines() if l.strip() and not l.startswith('#')])
     logger.info('Will monitor these repo projects: {}', my_repo_paths)
 
@@ -138,10 +142,7 @@ if __name__ == '__main__':
 
     # Send a test email at startup
     mailer = EmailSender("email_config.yaml")
-    mailer.send(
-        subject="Git health check startup",
-        body="The git health check script has been started",
-    )
+    mailer.send(subject="Git health check startup", body="The git health check script has been started")
 
     main(repo_paths=my_repo_paths, primary_fqdn=my_primary_repo_fqdn,
          mirrors_rr_fqdn=my_mirrors_rr_fqdn, mirror_hosts=my_mirror_hosts,

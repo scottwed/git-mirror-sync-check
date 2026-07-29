@@ -31,3 +31,9 @@ def calc_ss_diff(primary_snapshot: str, mirror_snapshot: str) -> str:
     lines2 = mirror_snapshot.splitlines(keepends=True)
     diff = difflib.unified_diff(lines1, lines2, fromfile='primary', tofile='mirror')
     return "".join(diff)
+
+
+def calc_ss_unique(primary_snapshot: str, mirror_snapshot: str) -> tuple[set[str],set[str]]:
+    lines1 = set(primary_snapshot.splitlines(keepends=False))
+    lines2 = set(mirror_snapshot.splitlines(keepends=False))
+    return lines1.difference(lines2), lines2.difference(lines1)
