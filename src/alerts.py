@@ -22,16 +22,21 @@ def rule_error_accumulation(repos_for_project: list[GitMirrorHealth], threshold:
         subject = (f'project {project_name} has met error threshold of '
                    f'{max_error_count} (highest) / {threshold} (allowed)')
         content = []
+        unhealthy_count = 0
         for ghm in repos_for_project:
             if ghm.sync_errors_total:
+                unhealthy_count += 1
                 discrepancy = calc_ss_unique(primary_ghm.index_snapshot, ghm.index_snapshot)
                 content.append(f'-----\n'
+                               f'Mirror: {ghm.instance} ({ghm.ip_address}), '
+                               f'last_in_sync={ghm.last_in_sync.isoformat(timespec="seconds")}, '
+                               f'in_service={ghm.in_service}, '
+                               f'errors={ghm.sync_errors_total}, unique refs:\n{'\n'.join(discrepancy[1])}\n\n'
                                f'Primary: {primary_ghm.instance} ({primary_ghm.ip_address}), '
                                f'primary_sync_time={primary_ghm.last_in_sync.isoformat(timespec="seconds")}, '
-                               f'unique:\n{discrepancy[0]}\n\n'
-                               f'Mirror: {ghm.instance} ({ghm.ip_address}), last_in_sync={ghm.last_in_sync.isoformat(timespec="seconds")}, '
-                               f'errors={ghm.sync_errors_total}, unique:\n{discrepancy[1]}\n'
+                               f'unique refs:\n{'\n'.join(discrepancy[0])}\n'
                                f'-----')
+        subject += f' for {unhealthy_count} unhealthy mirrors'
         return subject, '\n\n'.join(content)
 
     return '', ''

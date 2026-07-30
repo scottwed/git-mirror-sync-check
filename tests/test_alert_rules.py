@@ -40,15 +40,36 @@ def test_rule_error_accumulation():
     assert message != ''
     assert 'error threshold of 2' in subject
     assert '1 (allowed)' in subject
+    assert 'for 1 unhealthy' in subject
     assert '5.5.5.1 ' in message
-    assert '5.5.5.2' not in message
-    assert '5.5.5.3' not in message
+    assert '5.5.5.2 ' not in message
+    assert '5.5.5.3 ' not in message
     assert 'abc60f2af612b3505ab33e4c427991f055929014        refs/heads/dev' in message # From the primary
     assert 'abc60f2af612b3505ab33e4c427991f055921111        refs/heads/dev' in message # From the secondary
-    print(subject)
-    print(message)
+    # print(subject)
+    # print(message)
 
+    # 2 unhealthy mirror test
+    unhealthy_repo.sync_errors_total = 3
+    unhealthy_repo2: GitMirrorHealth = repo_lookup[repo_path][2]
+    unhealthy_repo2.index_snapshot = stale_commit_mirror_refs
+    unhealthy_repo2.last_in_sync = unhealthy_repo.last_in_sync - timedelta(minutes=9)
+    unhealthy_repo2.sync_errors_total = 1
+    subject, message = rule_error_accumulation(repos_for_project=repo_lookup[repo_path], threshold=alert_threshold)
+    assert subject != ''
+    assert message != ''
+    assert 'error threshold of 3' in subject
+    assert '1 (allowed)' in subject
+    assert 'for 2 unhealthy' in subject
+    assert '5.5.5.1 ' in message
+    assert '5.5.5.2 ' in message
+    assert '5.5.5.3 ' not in message
+    assert 'abc60f2af612b3505ab33e4c427991f055929014        refs/heads/dev' in message  # From the primary
+    assert 'abc60f2af612b3505ab33e4c427991f055921111        refs/heads/dev' in message  # From the secondary
+    # print(subject)
+    # print(message)
 
-if __name__ == '__main__':
-    test_rule_error_accumulation()
+#
+# if __name__ == '__main__':
+#     test_rule_error_accumulation()
 
