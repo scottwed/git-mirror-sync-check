@@ -71,7 +71,7 @@ class GitMirrorHealth(BaseModel):
 
 def prepare_mirror_health_objects(
         repo_path: str, repos_for_project: dict[str, list[GitMirrorHealth]],
-        primary_repo_fqdn: str, mirror_hosts: list[str]):
+        primary_repo_fqdn: str, mirror_hosts: list[str]) -> None:
     # On-demand initialization of the mirror health instances.
     # First item in the list will be the primary, followed by all the mirrors.
     if repo_path not in repos_for_project:

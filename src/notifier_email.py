@@ -36,6 +36,7 @@ class EmailSender:
         if not os.environ.get(ENV_VARNAME_EMAIL_PASSWORD):
             raise ValueError(f"Environment variable {ENV_VARNAME_EMAIL_PASSWORD} is not set.")
 
+
     def send(self, subject: str, body: str) -> bool:
         """Sends an email message using the persistent configurations."""
         msg = EmailMessage()
