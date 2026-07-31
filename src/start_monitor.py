@@ -56,7 +56,8 @@ def main(repo_paths: list[str], primary_fqdn: str, mirrors_rr_fqdn: str,
             prepare_mirror_health_objects(repo_path, repos_for_project, primary_fqdn, mirror_hosts)
             scan_repos_for_project(repo_path, repos_for_project[repo_path], current_in_service)
             process_alert_rules(repos_for_project[repo_path], notifier)
-        sleep(30)  # TODO Implement per-repo scan delay logic
+        # sleep(30)  # TODO Implement per-repo scan delay logic
+        sleep(60 * 5)
 
 
 def get_in_service_from_dns(mirrors_rr_fqdn: str) -> list[Any]:

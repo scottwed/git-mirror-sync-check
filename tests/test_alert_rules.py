@@ -1,7 +1,6 @@
 from datetime import datetime, timedelta
 
-from case_data import primary_refs, good_mirror_refs, missing_tag_mirror_refs, stale_commit_mirror_refs, \
-    missing_branch_mirror_refs
+from case_data import good_mirror_refs, stale_commit_mirror_refs
 from alerts import rule_error_accumulation
 from mirror_health import GitMirrorHealth, prepare_mirror_health_objects
 
@@ -68,8 +67,3 @@ def test_rule_error_accumulation():
     assert 'abc60f2af612b3505ab33e4c427991f055921111        refs/heads/dev' in message  # From the secondary
     # print(subject)
     # print(message)
-
-#
-# if __name__ == '__main__':
-#     test_rule_error_accumulation()
-

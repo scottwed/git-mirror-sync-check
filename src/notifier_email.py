@@ -32,7 +32,6 @@ class EmailSender:
         self.subject_prefix:str  = self.config["email"]["subject_prefix"]
 
         # Securely fetch password from environment variables
-        self.password = os.environ.get(ENV_VARNAME_EMAIL_PASSWORD)
         if not os.environ.get(ENV_VARNAME_EMAIL_PASSWORD):
             raise ValueError(f"Environment variable {ENV_VARNAME_EMAIL_PASSWORD} is not set.")
 
