@@ -30,6 +30,8 @@ def calc_ss_diff(primary_snapshot: str, mirror_snapshot: str) -> str:
     lines1 = primary_snapshot.splitlines(keepends=True)
     lines2 = mirror_snapshot.splitlines(keepends=True)
     diff = difflib.unified_diff(lines1, lines2, fromfile='primary', tofile='mirror')
+    if not diff:
+        return ""
     return "".join(diff)
 
 

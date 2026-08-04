@@ -2,9 +2,10 @@ from mirror_health import GitMirrorHealth
 from notifier_email import EmailSender
 from util import calc_ss_unique
 
+# TODO ? git_port_open=0 and in_service=1 > 1 hour  - Implies its under attack on the port
+# TODO ? in_service=0 > 26 hours - Accidentally left out of service after defensive removal
 
 def process_alert_rules(repos_for_project: list[GitMirrorHealth], notifier: EmailSender) -> None:
-    #  Alert on up=0 for > x minutes, git_port_open=0 > x minutes, in_service=0 > 26 hours
     subject, message = rule_error_accumulation(repos_for_project, threshold=2)
     if subject and message:
         notifier.send(subject, message)
@@ -37,6 +38,7 @@ def rule_error_accumulation(repos_for_project: list[GitMirrorHealth], threshold:
                                f'unique refs:\n{'\n'.join(discrepancy[0])}\n'
                                f'-----')
         subject += f' for {unhealthy_count} unhealthy mirrors'
+        print("Alert triggered for rule_error_accumulation")
         return subject, '\n\n'.join(content)
 
     return '', ''

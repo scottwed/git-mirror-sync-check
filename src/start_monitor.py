@@ -4,7 +4,7 @@ from ipaddress import ip_address
 from socket import getaddrinfo, AF_INET, AF_INET6
 from subprocess import run
 from sys import stderr
-from time import sleep
+from time import sleep, monotonic
 from typing import Any
 
 from loguru import logger
@@ -42,23 +42,27 @@ PRIMARY_FAILURE_PAUSE_SECS = 30  # 30 second default
 active_scan_interval_secs = 60 * 5  # 5 minutes default
 inactive_scan_interval_secs = 60 * 60 * 12  # 12 hour default
 
-
-# TODO write alert logic.  Alert on up=0 for > x minutes, git_port_open=0 > x minutes, in_service=0 > 26 hours
-
+@logger.catch(reraise=True)
 def main(repo_paths: list[str], primary_fqdn: str, mirrors_rr_fqdn: str,
          mirror_hosts: list[str], notifier: EmailSender):
     repos_for_project: dict[str, list[GitMirrorHealth]] = dict()
     while True:
         # The script assumes that the primary and all mirrors should have copy of each git repo.
         current_in_service = get_in_service_from_dns(mirrors_rr_fqdn)
+        loop_start = monotonic()
         logger.info('Mirrors in service: {}', current_in_service)
         for repo_path in repo_paths:
             prepare_mirror_health_objects(repo_path, repos_for_project, primary_fqdn, mirror_hosts)
             scan_repos_for_project(repo_path, repos_for_project[repo_path], current_in_service)
             process_alert_rules(repos_for_project[repo_path], notifier)
         # sleep(30)  # TODO Implement per-repo scan delay logic
-        sleep(60 * 5)
-
+        loop_stop = monotonic()
+        average_repo_scan_duration = (loop_stop - loop_start) / len(repo_paths)
+        logger.info("Average duration for scanning a project was {avg:.2f} seconds", avg=average_repo_scan_duration)
+        sleep_seconds = int(max(0, active_scan_interval_secs - (loop_stop - loop_start)))
+        logger.info("Sleeping for {} seconds to comply with active scan constraint of {} seconds",
+                    sleep_seconds, active_scan_interval_secs)
+        sleep(sleep_seconds)
 
 def get_in_service_from_dns(mirrors_rr_fqdn: str) -> list[Any]:
     current_in_service = [a[4][0] for a in getaddrinfo(mirrors_rr_fqdn, 22, family=AF_INET)]
