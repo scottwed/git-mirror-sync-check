@@ -41,10 +41,12 @@ def calc_ss_unique(primary_snapshot: str, mirror_snapshot: str) -> tuple[set[str
     lines2 = set(mirror_snapshot.splitlines(keepends=False))
     return lines1.difference(lines2), lines2.difference(lines1)
 
-def validate_input_file_path(file_path: Path, required_extension: str = '.yaml')-> str:
+
+def validate_input_file_path(file_path: Path, required_extension: str = '')-> str:
+    # Parameter required_extension should be blank or start with a period, such as ".yaml"
     if not file_path.is_file():
         return f'file was not found at: {file_path.absolute()}'
-    if file_path.suffix != required_extension:
+    if required_extension and file_path.suffix != required_extension:
         return f'file must end in {required_extension} at: {file_path.absolute()}'
     if file_path.stat().st_size == 0:
         return f'file must not be empty at: {file_path.absolute()}'

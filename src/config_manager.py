@@ -3,6 +3,7 @@ from pathlib import Path
 import yaml
 from loguru import logger
 
+from notifier_email import EmailSender
 from util import validate_input_file_path
 
 
@@ -60,3 +61,5 @@ class ConfigManager:
                     with open(self.mirrors_file_path, 'r', encoding='utf-8') as f:
                         self.mirror_hosts.extend([l.strip() for l in f.readlines() if l.strip() and not l.startswith('#')])
                         logger.info('Will monitor these mirror hosts: {}', self.mirror_hosts)
+
+            self.email_notifier = EmailSender(yaml_data)

@@ -13,7 +13,7 @@ from loguru import logger
 from alerts import process_alert_rules
 from config_manager import ConfigManager
 from mirror_health import GitMirrorHealth, prepare_mirror_health_objects
-from notifier_email import EmailSender, ENV_VARNAME_EMAIL_PASSWORD
+from notifier_email import ENV_VARNAME_EMAIL_PASSWORD
 from util import is_port_open, calc_repo_url, calc_ss_diff, validate_input_file_path
 
 PRODUCT = 'Git Mirror Sync Check'
@@ -27,8 +27,6 @@ To minimize maintenance, this edition will avoid requirements that require insta
   mirror.
 """
 
-# Note: Git remote ports - 22 SSH, 80 HTTP, 443 HTTPS, 9418 GIT R/O anon
-
 ### Don't edit this section ###
 global last_primary_failure_ts
 # noinspection PyRedeclaration
@@ -37,36 +35,34 @@ last_primary_failure_ts = datetime.min
 ### User modifiable ###
 logger.remove()  # Remove all existing handlers
 logger.add(stderr, level="INFO")  # Prevent debug and lower from appearing on console
-logger.add("mirror_sync_check.log", rotation="5 MB", retention=10)  # Write detailed logs with rotation
+LOG_FILE_PATH = "mirror_sync_check.log"  # Initialized during argument parsing
 
-GIT_PATH = os.environ.get("MSC_GIT_PATH", r'C:\Program Files\Git\cmd\git.exe')
+ENV_VARNAME_MSC_GIT_PATH = 'MSC_GIT_PATH'
+GIT_PATH = os.environ.get(ENV_VARNAME_MSC_GIT_PATH, r'C:\Program Files\Git\cmd\git.exe')
 # GIT_PATH = os.environ.get("MSC_GIT_PATH", r'/usr/bin/git')
 
 PRIMARY_FAILURE_PAUSE_SECS = 30  # 30 second default
-active_scan_interval_secs = 60 * 5  # 5 minutes default
-inactive_scan_interval_secs = 60 * 60 * 12  # 12 hour default
 
 @logger.catch(reraise=True)
-def main(repo_paths: list[str], primary_fqdn: str, mirrors_rr_fqdn: str,
-         mirror_hosts: list[str], notifier: EmailSender):
+def main(cm: ConfigManager):
+    # The script expects that the primary and all mirrors will have the same repo projects.
     repos_for_project: dict[str, list[GitMirrorHealth]] = dict()
     while True:
-        # The script assumes that the primary and all mirrors should have copy of each git repo.
-        current_in_service = get_in_service_from_dns(mirrors_rr_fqdn)
+        current_in_service = get_in_service_from_dns(cm.mirror_rr_fqdn)
         loop_start = monotonic()
         logger.info('Mirrors in service: {}', current_in_service)
-        for repo_path in repo_paths:
-            prepare_mirror_health_objects(repo_path, repos_for_project, primary_fqdn, mirror_hosts)
+        for repo_path in cm.project_paths:
+            prepare_mirror_health_objects(repo_path, repos_for_project, cm.primary_fqdn, cm.mirror_hosts)
             scan_repos_for_project(repo_path, repos_for_project[repo_path], current_in_service)
-            process_alert_rules(repos_for_project[repo_path], notifier)
-        # sleep(30)  # TODO Implement per-repo scan delay logic
+            process_alert_rules(repos_for_project[repo_path], cm.email_notifier)
         loop_stop = monotonic()
-        average_repo_scan_duration = (loop_stop - loop_start) / len(repo_paths)
+        average_repo_scan_duration = (loop_stop - loop_start) / len(cm.project_paths)
         logger.info("Average duration for scanning a project was {avg:.2f} seconds", avg=average_repo_scan_duration)
-        sleep_seconds = int(max(0, active_scan_interval_secs - (loop_stop - loop_start)))
+        sleep_seconds = int(max(0, cm.max_poll_freq_secs - (loop_stop - loop_start)))
         logger.info("Sleeping for {} seconds to comply with active scan constraint of {} seconds",
-                    sleep_seconds, active_scan_interval_secs)
+                    sleep_seconds, cm.max_poll_freq_secs)
         sleep(sleep_seconds)
+
 
 def get_in_service_from_dns(mirrors_rr_fqdn: str) -> list[Any]:
     current_in_service = [a[4][0] for a in getaddrinfo(mirrors_rr_fqdn, 22, family=AF_INET)]
@@ -99,7 +95,7 @@ def poll_git_host(repo_path: str, ghm: GitMirrorHealth, primary_ghm: GitMirrorHe
 
     logger.info('[{header}] Retrieved {ref_count} references.',
                 header=header, ref_count=len(mirror_refs[1].split('\n')))
-    # logger.debug('[{header}] Refs: \n{refs}', header=header, refs=mirror_refs[1])
+    logger.debug('[{header}] Refs: \n{refs}', header=header, refs=mirror_refs[1])
 
     if mirror_refs[2]:
         logger.error('[{header}] Failure to retrieve references. Git error: {err}',
@@ -129,37 +125,39 @@ def poll_git_host(repo_path: str, ghm: GitMirrorHealth, primary_ghm: GitMirrorHe
 def get_ref_list(repo_url: str) -> tuple[int, str, str]:
     # Returns a tuple of (git exit code, ls-remote output, git error messages)
     cmd = [GIT_PATH, 'ls-remote', repo_url]
-    # logger.info('Running {cmd}', cmd=' '.join(cmd))
+    logger.debug('Running {cmd}', cmd=' '.join(cmd))
     result = run(cmd, shell=True, capture_output=True)
     return result.returncode, result.stdout.decode('utf-8').strip(), result.stderr.decode('utf-8').strip()
 
 
 def print_help():
     print(f'{PRODUCT} (standalone) version {VERSION}\n')
-    print(f'A self-contained application to perform low-impact synchronization status monitoring of git mirrors.')
-    print(f'Current logic depends upon the execution of anonymous "git ls-remote" requests, limiting it to knowledge '
-          f'of git references.')
-    print(f'It does not check for presence or integrity of objects, indexes, config, hooks, or info files.')
-    print(f'Connection failures/refusal and discrepancies with the primary repo are captured as errors.')
-    print(f'Upon exceeding the threshold for consecutive errors, a single report for the entire repo is emailed '
-          f'as an alert.')
-    print(f'At startup, a process startup email is sent to validate SMTP settings and confirm startup time.')
-    print(f'Modifying the log file location or 5MB * 10 rolling log settings can be revised at '
-          f'the top of this script.')
+    print('A self-contained application to perform low-impact synchronization status monitoring of read-only git mirrors.')
+    print('Current logic depends upon the execution of anonymous "git ls-remote" requests, limiting it to knowledge '
+          'of git references.')
+    print('It does not check for presence or integrity of objects, indexes, config, hooks, or info files.')
+    print('Connection failures/refusal and discrepancies with the primary repo are captured as errors.')
+    print('Upon exceeding the threshold for consecutive errors, a single report for the entire repo is emailed '
+          'as an alert.')
+    print('At startup, a process startup email is sent to validate SMTP settings and confirm startup time.')
+    print('Modifying the log file location or 5MB * 10 rolling log settings can be revised at '
+          'the top of this script.')
     print()
-    print(f'Inputs:')
-    print(f'Create a "repos.txt" file containing repo paths to monitor (one per line), like "bison.git" or '
-          f'"gnucap/gnucap-modelgen-verilog.git"')
-    print(f'Create a "mirrors.txt" file containing the mirror\'s IPv4/6 addresses to monitor (one per line),'
-          f' like "1.2.3.4" and "2a0e:97c0:3ea:82b::1"')
-    print(f'Copy the config_example.yaml file to a new .yaml file, and update each entry using a text editor '
-          f'including the relative or full paths to the two input .txt files. ')
-    print(f'Note: Lines starting with # are ignored in the.txt and .yaml files')
+    print('Inputs:')
+    print('Create a "repos.txt" file containing repo paths to monitor (one per line), like "bison.git" or '
+          '"gnucap/gnucap-modelgen-verilog.git"')
+    print('Create a "mirrors.txt" file containing the mirror\'s IPv4/6 addresses to monitor (one per line),'
+          ' like "1.2.3.4" and "2a0e:97c0:3ea:82b::1"')
+    print('Copy the config_example.yaml file to a new .yaml file, and update each entry using a text editor '
+          'including the relative or full path for the two input .txt files. ')
+    print('Note: Lines starting with # are ignored in the.txt and .yaml files')
     print()
     print("Usage:")
-    print(f'python (or uv run) my_msc_config.yaml')
+    print('python (or uv run) msc_config.yaml [--debug]')
     print(f'If the SMTP server requires a password, set environment variable: {ENV_VARNAME_EMAIL_PASSWORD} '
-          f'before running the script')
+           'before running the script')
+    print('If the git executable is not present in the user\'s executable path, '
+          f'set environment variable {ENV_VARNAME_MSC_GIT_PATH}')
 
 
 def load_monitor_config(config_file: str):
@@ -179,17 +177,24 @@ def load_monitor_config(config_file: str):
 
 if __name__ == '__main__':
     my_repo_paths: list[str] = []
-    if len(argv) <= 1:
+    if '-v' in argv or '--version' in argv:
+        print(f'{PRODUCT} (standalone) version {VERSION}\n')
+        exit(0)
+
+    if '--debug' in argv:
+        argv.remove('--debug')
+        logger.info("File logger will include debug level messages.")
+        logger.add(LOG_FILE_PATH, rotation="5 MB", retention=10, level="DEBUG")
+    else:
+        logger.add(LOG_FILE_PATH, rotation="5 MB", retention=10, level="INFO")
+
+    if len(argv) != 2 or argv[1] in ('-h', '--help'):
         print_help()
         exit(1)
     logger.info('Loading configuration data from: {}', argv[1])
     my_config_mgr = load_monitor_config(argv[1])
 
     # Send a test email at startup
-    mailer = EmailSender(argv[1])
-    mailer.send(subject=f"{PRODUCT} startup", body=f"{PRODUCT} {VERSION} script has been started")
+    logger.info("Attempting to send startup email notification.")
+    my_config_mgr.email_notifier.send(subject=f"{PRODUCT} startup", body=f"{PRODUCT} {VERSION} script has been started")
     main(my_config_mgr)
-
-    # main(repo_paths=my_repo_paths, primary_fqdn=my_primary_repo_fqdn,
-    #      mirrors_rr_fqdn=my_mirrors_rr_fqdn, mirror_hosts=my_mirror_hosts,
-    #      notifier=mailer)

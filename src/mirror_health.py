@@ -13,13 +13,12 @@ METRIC_PREFIX = "git_mirror"
 
 class MirrorRole(str, Enum):
     primary = "primary"
-    secondary = "secondary"
-    tertiary = "tertiary"
+    mirror = "mirror"
 
 
 # noinspection PyStringConversionWithoutDunderMethod
 class GitMirrorHealth(BaseModel):
-    """Availability and sync-health metrics for a repo project on one git server."""
+    """Availability and sync-health metrics for a project on one git server."""
 
     # Identity
     project: Annotated[str, Field(frozen=True, description="Repo/project identifier, e.g. 'org/repo'")]
@@ -87,7 +86,7 @@ def prepare_mirror_health_objects(
         for mirror in mirror_hosts:
             mh = GitMirrorHealth(
                 project=repo_path, instance=mirror, ip_address=ip_address(mirror),
-                role=MirrorRole.tertiary, up=0, in_service=1, in_sync=0,
+                role=MirrorRole.mirror, up=0, in_service=1, in_sync=0,
                 last_in_sync=datetime.min, sync_errors_total=0, last_error_message="",
                 index_snapshot="")
             repos_for_project[repo_path].append(mh)

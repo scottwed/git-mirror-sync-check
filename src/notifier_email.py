@@ -3,41 +3,22 @@ import smtplib
 from email.message import EmailMessage
 
 from loguru import logger
-import yaml
 
 ENV_VARNAME_EMAIL_PASSWORD = 'MSC_EMAIL_PASSWORD'
 
 class EmailSender:
-    """ Email sender is initialized via a YAML config file (see below).
+    def __init__(self, yaml_data: dict):
+        self.smtp_server:str = yaml_data["smtp"]["server"]
+        self.smtp_port:int  = int(yaml_data["smtp"]["port"])
+        self.sender_email:str  = yaml_data["email"]["sender"]
+        self.receiver_email:str  = yaml_data["email"]["receiver"]
+        self.subject_prefix:str  = yaml_data["email"]["subject_prefix"]
 
-    smtp:
-      server: "smtp.replace.me.com"
-      port: 587
-    email:
-      sender: "mirror_health@replace.me.com"
-      receiver: "admin@replace.me.com"
-      subject_prefix: "Desired prefix for alert notifications:"
-    """
-
-    def __init__(self, config_path: str):
-        # Load configuration from YAML
-        with open(config_path, "r", encoding='utf-8') as file:
-            self.config = yaml.safe_load(file)
-
-        # Extract SMTP and email metadata
-        self.smtp_server:str = self.config["smtp"]["server"]
-        self.smtp_port:int  = int(self.config["smtp"]["port"])
-        self.sender_email:str  = self.config["email"]["sender"]
-        self.receiver_email:str  = self.config["email"]["receiver"]
-        self.subject_prefix:str  = self.config["email"]["subject_prefix"]
-
-        # Securely fetch password from environment variables
         if not os.environ.get(ENV_VARNAME_EMAIL_PASSWORD):
             logger.warning(f"Environment variable {ENV_VARNAME_EMAIL_PASSWORD} is not set.")
 
 
     def send(self, subject: str, body: str) -> bool:
-        """Sends an email message using the persistent configurations."""
         msg = EmailMessage()
         msg["From"] = self.sender_email
         msg["To"] = self.receiver_email
