@@ -1,5 +1,6 @@
 import difflib
 import socket
+from pathlib import Path
 
 
 def is_port_open(ip: str, port: int) -> int:
@@ -39,3 +40,12 @@ def calc_ss_unique(primary_snapshot: str, mirror_snapshot: str) -> tuple[set[str
     lines1 = set(primary_snapshot.splitlines(keepends=False))
     lines2 = set(mirror_snapshot.splitlines(keepends=False))
     return lines1.difference(lines2), lines2.difference(lines1)
+
+def validate_input_file_path(file_path: Path, required_extension: str = '.yaml')-> str:
+    if not file_path.is_file():
+        return f'file was not found at: {file_path.absolute()}'
+    if file_path.suffix != required_extension:
+        return f'file must end in {required_extension} at: {file_path.absolute()}'
+    if file_path.stat().st_size == 0:
+        return f'file must not be empty at: {file_path.absolute()}'
+    return ''

@@ -1,22 +1,26 @@
 import os
 from datetime import datetime, timedelta
 from ipaddress import ip_address
+from pathlib import Path
 from socket import getaddrinfo, AF_INET, AF_INET6
 from subprocess import run
-from sys import stderr
+from sys import stderr, argv
 from time import sleep, monotonic
 from typing import Any
 
 from loguru import logger
 
 from alerts import process_alert_rules
+from config_manager import ConfigManager
 from mirror_health import GitMirrorHealth, prepare_mirror_health_objects
-from notifier_email import EmailSender
-from util import is_port_open, calc_repo_url, calc_ss_diff
+from notifier_email import EmailSender, ENV_VARNAME_EMAIL_PASSWORD
+from util import is_port_open, calc_repo_url, calc_ss_diff, validate_input_file_path
 
+PRODUCT = 'Git Mirror Sync Check'
+VERSION = '1.0'
 
 """
-GIT Mirror Sync Check - Standalone edition
+Git Mirror Sync Check - Standalone edition
 To minimize maintenance, this edition will avoid requirements that require installation of
  additional services, such as a timeseries database, alert manager, and notification services.
  Instead, the script will do basic monitoring, relying upon its self-contained knowledge of each monitored
@@ -130,25 +134,62 @@ def get_ref_list(repo_url: str) -> tuple[int, str, str]:
     return result.returncode, result.stdout.decode('utf-8').strip(), result.stderr.decode('utf-8').strip()
 
 
+def print_help():
+    print(f'{PRODUCT} (standalone) version {VERSION}\n')
+    print(f'A self-contained application to perform low-impact synchronization status monitoring of git mirrors.')
+    print(f'Current logic depends upon the execution of anonymous "git ls-remote" requests, limiting it to knowledge '
+          f'of git references.')
+    print(f'It does not check for presence or integrity of objects, indexes, config, hooks, or info files.')
+    print(f'Connection failures/refusal and discrepancies with the primary repo are captured as errors.')
+    print(f'Upon exceeding the threshold for consecutive errors, a single report for the entire repo is emailed '
+          f'as an alert.')
+    print(f'At startup, a process startup email is sent to validate SMTP settings and confirm startup time.')
+    print(f'Modifying the log file location or 5MB * 10 rolling log settings can be revised at '
+          f'the top of this script.')
+    print()
+    print(f'Inputs:')
+    print(f'Create a "repos.txt" file containing repo paths to monitor (one per line), like "bison.git" or '
+          f'"gnucap/gnucap-modelgen-verilog.git"')
+    print(f'Create a "mirrors.txt" file containing the mirror\'s IPv4/6 addresses to monitor (one per line),'
+          f' like "1.2.3.4" and "2a0e:97c0:3ea:82b::1"')
+    print(f'Copy the config_example.yaml file to a new .yaml file, and update each entry using a text editor '
+          f'including the relative or full paths to the two input .txt files. ')
+    print(f'Note: Lines starting with # are ignored in the.txt and .yaml files')
+    print()
+    print("Usage:")
+    print(f'python (or uv run) my_msc_config.yaml')
+    print(f'If the SMTP server requires a password, set environment variable: {ENV_VARNAME_EMAIL_PASSWORD} '
+          f'before running the script')
+
+
+def load_monitor_config(config_file: str):
+    config_path = Path(config_file)
+    invalid_message = validate_input_file_path(config_path)
+    if invalid_message:
+        logger.error('Configuration {}  Exiting for safety.')
+        exit(2)
+
+    config_mgr = ConfigManager(config_path)
+    if config_mgr.problems:
+        for problem in config_mgr.problems:
+            logger.error('Initialization error: {}', problem)
+        exit(3)
+    return config_mgr
+
+
 if __name__ == '__main__':
     my_repo_paths: list[str] = []
-    # with open('one_repo.txt', 'r', encoding='utf-8') as f:
-    with open('active_repos.txt', 'r', encoding='utf-8') as f:
-        my_repo_paths.extend([l.strip() for l in f.readlines() if l.strip() and not l.startswith('#')])
-    logger.info('Will monitor these repo projects: {}', my_repo_paths)
-
-    my_mirror_hosts: list[str] = []
-    with open('tier_3_mirrors.txt', 'r', encoding='utf-8') as f:
-        my_mirror_hosts.extend([l.strip() for l in f.readlines() if l.strip() and not l.startswith('#')])
-    logger.info('Will monitor these repo hosts: {}', my_mirror_hosts)
-
-    my_mirrors_rr_fqdn = 'git.git.savannah.gnu.org'
-    my_primary_repo_fqdn = 'git.savannah.gnu.org'
+    if len(argv) <= 1:
+        print_help()
+        exit(1)
+    logger.info('Loading configuration data from: {}', argv[1])
+    my_config_mgr = load_monitor_config(argv[1])
 
     # Send a test email at startup
-    mailer = EmailSender("email_config.yaml")
-    mailer.send(subject="Git health check startup", body="The git health check script has been started")
+    mailer = EmailSender(argv[1])
+    mailer.send(subject=f"{PRODUCT} startup", body=f"{PRODUCT} {VERSION} script has been started")
+    main(my_config_mgr)
 
-    main(repo_paths=my_repo_paths, primary_fqdn=my_primary_repo_fqdn,
-         mirrors_rr_fqdn=my_mirrors_rr_fqdn, mirror_hosts=my_mirror_hosts,
-         notifier=mailer)
+    # main(repo_paths=my_repo_paths, primary_fqdn=my_primary_repo_fqdn,
+    #      mirrors_rr_fqdn=my_mirrors_rr_fqdn, mirror_hosts=my_mirror_hosts,
+    #      notifier=mailer)

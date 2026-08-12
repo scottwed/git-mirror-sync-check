@@ -33,7 +33,7 @@ class EmailSender:
 
         # Securely fetch password from environment variables
         if not os.environ.get(ENV_VARNAME_EMAIL_PASSWORD):
-            raise ValueError(f"Environment variable {ENV_VARNAME_EMAIL_PASSWORD} is not set.")
+            logger.warning(f"Environment variable {ENV_VARNAME_EMAIL_PASSWORD} is not set.")
 
 
     def send(self, subject: str, body: str) -> bool:
